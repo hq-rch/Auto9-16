@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Omni Video Repurposer | badag007</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; min-height: 100vh; justify-content: center; margin: 0; }
+        .container { background: #1e293b; padding: 30px; border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.9); width: 100%; max-width: 420px; text-align: center; border-top: 4px solid #10b981; }
+        h2 { color: #10b981; margin-top: 0; margin-bottom: 5px; font-size: 24px; font-weight: 900; letter-spacing: 0.5px; }
+        .subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 25px; }
+        
+        .upload-area { border: 2px dashed #475569; padding: 25px 15px; border-radius: 12px; margin-bottom: 20px; cursor: pointer; background: #334155; transition: 0.3s; }
+        .upload-area:hover { border-color: #10b981; background: #3b4d63; }
+        input[type="file"] { display: none; }
+        #info-upload { margin: 0; font-size: 15px; font-weight: 500; color: #cbd5e1; }
+        
+        button { padding: 14px; border: none; border-radius: 8px; background: #10b981; color: white; font-weight: bold; cursor: pointer; width: 100%; font-size: 15px; transition: 0.2s; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); }
+        button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; box-shadow: none; }
+        button:not(:disabled):hover { background: #059669; }
+        button:not(:disabled):active { transform: scale(0.98); }
+        
+        #loading-container { display: none; margin: 20px 0; text-align: left; }
+        #loading-text { color: #38bdf8; font-size: 13px; font-weight: bold; margin-bottom: 8px; animation: pulse 1s infinite alternate; }
+        .progress-bar { width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; }
+        #progress-fill { width: 0%; height: 100%; background: #38bdf8; transition: width 0.3s; }
+
+        @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
+
+        #result-area { display: none; margin-top: 20px; }
+        /* Preview kita bikin kecil aja biar gak menuh-menuhin layar HP */
+        canvas { width: 100%; max-width: 200px; height: auto; border-radius: 8px; border: 2px solid #334155; margin-bottom: 15px; }
+
+        .dl-btn { background: #3b82f6; text-decoration: none; display: block; padding: 12px; border-radius: 8px; color: white; font-weight: bold; font-size: 15px; width: 100%; box-sizing: border-box; transition: 0.2s; text-align: center; }
+        .dl-btn:hover { background: #2563eb; }
+
+        .saweria-btn { background: #faae2b; text-decoration: none; display: block; padding: 12px; border-radius: 8px; color: #0f172a; margin-top: 25px; font-weight: 900; font-size: 14px; width: 100%; box-sizing: border-box; transition: 0.2s; border: 2px solid #e09922; text-align: center; }
+        .saweria-btn:hover { background: #ffbd4a; transform: translateY(-2px); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Video Repurposer</h2>
+    <div class="subtitle">Ubah 16:9 jadi 9:16 (Auto Blur Background)</div>
+
+    <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+        <p id="info-upload">🎥 Pilih Video (Landscape)</p>
+        <input type="file" id="fileInput" accept="video/mp4,video/webm,video/mov" onchange="fileSelected(this)">
+    </div>
+
+    <button onclick="processVideo()" id="btn-process" disabled>Render Video Sekarang</button>
+    
+    <div id="loading-container">
+        <div id="loading-text">⏳ Sedang merender (Real-time)... 0%</div>
+        <div class="progress-bar">
+            <div id="progress-fill"></div>
+        </div>
+        <p style="font-size: 11px; color: #64748b; margin-top: 8px;">*Jangan tutup tab ini selama proses render.</p>
+    </div>
+
+    <div id="result-area">
+        <p style="font-size: 12px; color: #94a3b8; font-weight: bold; margin-bottom: 10px;">Preview Hasil:</p>
+        <canvas id="preview-canvas"></canvas>
+        <a id="download-link" class="dl-btn" href="#" download="omni-repurposed.webm">⬇️ Download Video (WebM)</a>
+    </div>
+
+    <a href="https://saweria.co/badag007" target="_blank" class="saweria-btn">☕ Support badag007 di Saweria</a>
+</div>
+
+<script>
+    let videoElement = document.createElement('video');
+    videoElement.muted = true; // Wajib dimute biar ga bocor ke speaker pas proses
+    videoElement.crossOrigin = "anonymous";
+
+    function fileSelected(input) {
+        if (input.files && input.files[0]) {
+            let fileName = input.files[0].name;
+            if(fileName.length > 25) fileName = fileName.substring(0, 22) + '...';
+            document.getElementById('info-upload').innerText = '📁 ' + fileName;
+            document.getElementById('btn-process').disabled = false;
+            document.getElementById('result-area').style.display = 'none';
+        }
+    }
+
+    async function processVideo() {
+        const fileInput = document.getElementById('fileInput');
+        const btnProcess = document.getElementById('btn-process');
+        const loadingContainer = document.getElementById('loading-container');
+        const loadingText = document.getElementById('loading-text');
+        const progressFill = document.getElementById('progress-fill');
+        const canvas = document.getElementById('preview-canvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Optimasi perf
+        
+        if (!fileInput.files[0]) return;
+
+        btnProcess.disabled = true;
+        loadingContainer.style.display = "block";
+        document.getElementById('result-area').style.display = 'none';
+        progressFill.style.width = '0%';
+
+        // Setup Resolusi Kanvas ke 9:16 (Kita pakai 720x1280 biar enteng dirender browser)
+        const CANVAS_W = 720;
+        const CANVAS_H = 1280;
+        canvas.width = CANVAS_W;
+        canvas.height = CANVAS_H;
+
+        const fileURL = URL.createObjectURL(fileInput.files[0]);
+        videoElement.src = fileURL;
+
+        videoElement.onloadeddata = () => {
+            const duration = videoElement.duration;
+            videoElement.play();
+
+            // Setup MediaRecorder buat nge-capture kanvas jadi file video
+            const canvasStream = canvas.captureStream(30); // 30 FPS
+            
+            // Trik narik Audio dari video asli biar gak hilang
+            let audioTracks = [];
+            if (videoElement.captureStream) {
+                audioTracks = videoElement.captureStream().getAudioTracks();
+            } else if (videoElement.mozCaptureStream) {
+                audioTracks = videoElement.mozCaptureStream().getAudioTracks();
+            }
+            
+            // Gabungin Video Kanvas + Audio Asli
+            const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+            
+            // Browser biasanya support webm
+            const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus' });
+            let chunks = [];
+
+            recorder.ondataavailable = e => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const videoURL = URL.createObjectURL(blob);
+                document.getElementById('download-link').href = videoURL;
+                
+                loadingContainer.style.display = "none";
+                document.getElementById('result-area').style.display = "block";
+                btnProcess.disabled = false;
+                btnProcess.innerText = "Render Ulang";
+            };
+
+            recorder.start();
+
+            // Core Logic: Nggambar video ke kanvas frame per frame
+            function renderFrame() {
+                if (videoElement.paused || videoElement.ended) {
+                    recorder.stop();
+                    return;
+                }
+
+                // Hitung Progress Bar
+                const progress = Math.min(100, Math.round((videoElement.currentTime / duration) * 100));
+                loadingText.innerText = `⏳ Sedang merender (Real-time)... ${progress}%`;
+                progressFill.style.width = `${progress}%`;
+
+                // 1. Gambar Background Blur (Di-zoom biar nutupin 9:16)
+                // Kalkulasi aspect ratio buat background cover
+                const vidAspect = videoElement.videoWidth / videoElement.videoHeight;
+                const canvasAspect = CANVAS_W / CANVAS_H;
+                
+                let drawW, drawH, drawX, drawY;
+                
+                if (vidAspect > canvasAspect) {
+                    drawH = CANVAS_H;
+                    drawW = videoElement.videoWidth * (CANVAS_H / videoElement.videoHeight);
+                    drawX = (CANVAS_W - drawW) / 2;
+                    drawY = 0;
+                } else {
+                    drawW = CANVAS_W;
+                    drawH = videoElement.videoHeight * (CANVAS_W / videoElement.videoWidth);
+                    drawX = 0;
+                    drawY = (CANVAS_H - drawH) / 2;
+                }
+
+                ctx.filter = 'blur(30px) brightness(0.6)'; // Nge-blur dan agak digelapin
+                ctx.drawImage(videoElement, drawX, drawY, drawW, drawH);
+
+                // 2. Gambar Foreground Asli (Di-fit di tengah, tanpa blur)
+                ctx.filter = 'none'; 
+                let fgW = CANVAS_W;
+                let fgH = CANVAS_W / vidAspect; 
+                let fgX = 0;
+                let fgY = (CANVAS_H - fgH) / 2;
+                
+                // Tambahin sedikit bayangan biar videonya pop up dari background
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.shadowBlur = 20;
+                ctx.shadowOffsetY = 5;
+
+                ctx.drawImage(videoElement, fgX, fgY, fgW, fgH);
+                
+                // Reset shadow biar frame berikutnya ga kacau
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+
+                // Looping terus sampai video selesai
+                requestAnimationFrame(renderFrame);
+            }
+
+            // Mulai render
+            renderFrame();
+        };
+    }
+</script>
+
+</body>
+</html>
